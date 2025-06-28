@@ -128,41 +128,44 @@ where
         }
     }
 
-    // Gets the fp status register.
-    // Needed for flushing denormals
-    #[allow(unreachable_code)]
-    fn get_fp_status_register(&self) -> Option<u32> {
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-        unsafe {
-            use std::arch::asm;
-            let fspr: u32;
-            asm!("msr fpcr, {0:r}", out(reg) fspr);
-            return Some(fspr);
-        }
-        #[cfg(target_feature = "sse")]
-        unsafe {
-            use std::arch::x86_64::*;
-            return Some(_mm_getcsr());
-        }
-        None
+// Gets the FP status register.
+// Needed for flushing denormals
+#[allow(unreachable_code)]
+fn get_fp_status_register(&self) -> Option<u32> {
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe {
+        use std::arch::asm;
+        let fspr: u64;
+        asm!("mrs {0:x}, fpcr", out(reg) fspr);
+        return Some(fspr as u32); // Truncate to 32-bit if needed
     }
 
-    // Sets the fp status register.
-    // Needed for flushing denormals
-    #[allow(unreachable_code)]
-    fn set_fp_status_register(&self, fspr: u32) {
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-        unsafe {
-            use std::arch::asm;
-            asm!("mrs {0:r}, fpcr", in(reg) fspr);
-            return;
-        }
-        #[cfg(target_feature = "sse")]
-        unsafe {
-            use std::arch::x86_64::*;
-            _mm_setcsr(fspr);
-        }
+    #[cfg(target_feature = "sse")]
+    unsafe {
+        use std::arch::x86_64::*;
+        return Some(_mm_getcsr());
     }
+
+    None
+}
+   // Sets the FP status register.
+// Needed for flushing denormals
+#[allow(unreachable_code)]
+fn set_fp_status_register(&self, fspr: u32) {
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    unsafe {
+        use std::arch::asm;
+        let fspr64 = fspr as u64;
+        asm!("msr fpcr, {0:x}", in(reg) fspr64);
+        return;
+    }
+
+    #[cfg(target_feature = "sse")]
+    unsafe {
+        use std::arch::x86_64::*;
+        _mm_setcsr(fspr);
+    }
+}
 
     pub fn update_params_from_state(&mut self, state: &State) {
         for (idx, value) in &state.updates {
